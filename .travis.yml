@@ -1,0 +1,32 @@
+language: go
+go_import_path: github.com/lubinsz/rook 
+
+sudo: required
+
+services: docker
+
+go:
+  - 1.10.x
+
+notifications:
+  on_success: never
+  on_failure: never
+
+before_install:
+  - sudo apt-get -qq update
+  - sudo apt-get install -y libseccomp-dev/trusty-backports
+  - go get -u github.com/ghodss/yaml 
+install:
+  - mkdir -p ${GOPATH}/src/k8s.io
+  - (cd ${GOPATH}/src/k8s.io && git clone https://github.com/kubernetes/kubernetes.git)
+  - (cd ${GOPATH}/src/k8s.io/kubernetes && git checkout v1.11.3)
+  - (cd ${GOPATH}/src/k8s.io && git clone https://github.com/kubernetes/client-go.git)
+  - (cd ${GOPATH}/src/k8s.io/client-go && git checkout v9.0.0)  
+  - mkdir -p ${GOPATH}/src/github.com/rook
+  - (cd ${GOPATH}/src/github.com/rook && rm * -rf && git clone https://github.com/rook/rook.git)
+  - (cd ${GOPATH}/src/github.com/rook/rook && go get -d ./...)
+  - (cd ${GOPATH}/src/github.com/rook/rook && make build && make do.build.parallel)
+  - (cd ${GOPATH}/src/github.com/lubinsz/rook && make build && make do.build.parallel)  
+  - (cd ${GOPATH}/src/github.com/lubinsz/rook && make -C images/nfs PLATFORM=linux_arm64)
+script:
+  - echo "finished" 

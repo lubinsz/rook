@@ -20,11 +20,13 @@ include ../image.mk
 NFS_IMAGE = $(BUILD_REGISTRY)/nfs-$(GOARCH)
 
 NFS_BASE ?= fedora:28
+DOCKERFILE ?= Dockerfile
 
 ifeq ($(GOARCH),amd64)
-NFS_BASEIMAGE = $(NFS_BASE)
+	NFS_BASEIMAGE = $(NFS_BASE)
 else ifeq ($(GOARCH),arm64)
-NFS_BASEIMAGE = arm64v8/$(NFS_BASE)
+	NFS_BASEIMAGE = arm64v8/$(NFS_BASE)
+	DOCKERFILE = Dockerfile-arm64
 endif
 
 TEMP := $(shell mktemp -d)
@@ -40,13 +42,19 @@ IMAGE_FILENAME := $(IMAGE_OUTPUT_DIR)/nfs.tar.gz
 
 do.build:
 	@echo === docker build $(NFS_IMAGE)
-	@cp Dockerfile $(TEMP)
+	if [ $(GOARCH) == arm64 ]; then \
+		docker run --rm --privileged multiarch/qemu-user-static:register --reset; \
+		sed -e '/FROM NFS_BASEIMAGE/r Dockerfile_header_arm64' Dockerfile > ${DOCKERFILE}; \
+		cd $(TEMP) && wget https://github.com/multiarch/qemu-user-static/releases/download/v3.0.0/qemu-aarch64-static; \
+		chmod a+x qemu-aarch64-static; \
+	fi
+	@cp $(DOCKERFILE) $(TEMP)
 	@cp start.sh $(TEMP)
 	@cp $(OUTPUT_DIR)/bin/linux_$(GOARCH)/rook $(TEMP)
-	@cd $(TEMP) && $(SED_CMD) 's|NFS_BASEIMAGE|$(NFS_BASEIMAGE)|g' Dockerfile
+	@cd $(TEMP) && $(SED_CMD) 's|NFS_BASEIMAGE|$(NFS_BASEIMAGE)|g' $(DOCKERFILE)
 	@docker build $(BUILD_ARGS) \
 		-t $(NFS_IMAGE) \
-		$(TEMP)
+		-f $(TEMP)/$(DOCKERFILE) $(TEMP)
 	@[ "$(OLD_IMAGE_ID)" != "$(CURRENT_IMAGE_ID)" ] && [ -n "$(OLD_IMAGE_ID)" ] && docker rmi $(OLD_IMAGE_ID) || true
 	@if [ ! -e "$(IMAGE_FILENAME)" ] || [ "$(OLD_IMAGE_ID)" != "$(CURRENT_IMAGE_ID)" ] || [ -n "$(OLD_IMAGE_ID)" ]; then \
 		echo === saving image $(NFS_IMAGE); \
